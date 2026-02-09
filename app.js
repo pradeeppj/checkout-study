@@ -5,16 +5,25 @@
  * - Physical/Digital branching
  * - 1 recipient only (no "number of recipients" field shown)
  * - Recipient is split into subpages: qty -> amount -> message
- * - Condition A: Standard only
- * - Condition B: Standard / Voice / Chat (user-selectable per step)
- *              - When Voice/Chat is selected, clicking/manual controls are disabled
- * - Condition C: Agent-selected modality per step (hardcoded, locked)
- *              - Manual controls disabled unless locked modality is "standard"
  *
- * Fixes in this version:
- * - Digital flow: REMOVED Packaging step (doesn't show for Digital)
- * - Continue gating: qty defaults to 1 and amount defaults to 50, so Continue stays enabled
- * - Pricing: shows "—" until required pricing inputs are selected; pricing never decreases (no negative deltas)
+ * Conditions
+ * - A: On-screen only (no modality UI shown)
+ * - B: User-selectable input method (On-screen / Voice / Chat)
+ *      - NO default method: user must pick on Step 1 (gated)
+ *      - Selection persists across steps; user can toggle anytime
+ *      - When Voice/Chat is selected, manual clicking controls are disabled
+ * - C: Agent-selected modality per step (hardcoded, locked)
+ *      - Manual controls disabled unless locked modality is "standard"
+ *
+ * Fixes included:
+ * - Digital flow: Packaging removed
+ * - Continue gating: qty defaults to 1 and amount defaults to 50 (so Continue stays enabled on those steps)
+ * - Pricing: shows "—" until required pricing inputs are selected
+ * - Price only adds (no negative deltas)
+ *
+ * IMPORTANT change requested:
+ * - Rename "Standard" -> "On-screen"
+ * - In Condition B: user must choose input method on Step 1 (no default)
  *************************************************/
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -50,11 +59,6 @@ async function writeFinal(payload) {
 
 /***********************
  * Condition selection (A/B/C)
- * - Accepts URL ?cond=A|B|C (also condition=, c=)
- * - If missing, assigns once, stores in localStorage, AND writes to URL
- ***********************/
-/***********************
- * Condition selection (A/B/C)
  * - Accepts URL ?cond=A|B|C (also ?condition=, ?c=) and hash #A/#B/#C
  * - If URL provides a condition, it overrides localStorage
  * - Immediately removes cond/hash from the URL (keeps links clean)
@@ -63,22 +67,21 @@ function getCondition() {
   const key = "study_condition_abc";
   const url = new URL(window.location.href);
 
-  const qp = (url.searchParams.get("cond") ||
-              url.searchParams.get("condition") ||
-              url.searchParams.get("c") ||
-              "").toUpperCase().trim();
+  const qp = (url.searchParams.get("cond") || url.searchParams.get("condition") || url.searchParams.get("c") || "")
+    .toUpperCase()
+    .trim();
 
   const h = (url.hash || "").replace("#", "").toUpperCase().trim();
 
-  const fromUrl =
-    (qp === "A" || qp === "B" || qp === "C") ? qp :
-    (h === "A" || h === "B" || h === "C") ? h :
-    "";
+  const fromUrl = (qp === "A" || qp === "B" || qp === "C")
+    ? qp
+    : (h === "A" || h === "B" || h === "C")
+      ? h
+      : "";
 
   if (fromUrl) {
     localStorage.setItem(key, fromUrl);
 
-    // remove params + hash so URL is clean
     url.searchParams.delete("cond");
     url.searchParams.delete("condition");
     url.searchParams.delete("c");
@@ -91,13 +94,11 @@ function getCondition() {
   const existing = (localStorage.getItem(key) || "").toUpperCase();
   if (existing === "A" || existing === "B" || existing === "C") return existing;
 
-  // If neither exists, default to A
   localStorage.setItem(key, "A");
   return "A";
 }
 
 const CONDITION = getCondition();
-
 
 /***********************
  * Local session state
@@ -118,11 +119,17 @@ const session = {
   survey: {},
 };
 
-let currentInputMethod = "standard"; // B user-controlled; C locked per-step
+/**
+ * Input method persistence
+ * - A: forced "standard"
+ * - B: user must pick on step 1 (no default). stored in localStorage.
+ * - C: locked per-step (not stored)
+ */
+const IM_KEY = "study_input_method_b"; // persist only for condition B
+let currentInputMethod = null; // "standard" | "voice" | "chat" (null = not chosen yet)
 
 /***********************
  * Condition C: hardcoded modality maps (no variability)
- * NOTE: Digital flow has NO packaging step.
  ***********************/
 const CONDITION_C_MAP_PHYSICAL = {
   card_type: "voice",
@@ -154,7 +161,6 @@ const CONDITION_C_MAP_DIGITAL = {
 };
 
 function getConditionCMap() {
-  // Before selection, default to DIGITAL mapping so the UI is deterministic.
   return answers.card_type === "Physical" ? CONDITION_C_MAP_PHYSICAL : CONDITION_C_MAP_DIGITAL;
 }
 
@@ -168,7 +174,7 @@ function resolveInputMethodForStep(stepId) {
 
 /***********************
  * Manual interaction policy
- * - A: always allowed
+ * - A: always allowed (and only mode)
  * - B: allowed ONLY when currentInputMethod === "standard"
  * - C: allowed ONLY when locked modality === "standard"
  ***********************/
@@ -177,11 +183,41 @@ function isManualInputAllowedForCurrentStep(stepObj) {
   if (CONDITION === "A") return true;
 
   if (CONDITION === "B") {
-    return (currentInputMethod || "standard") === "standard";
+    return (currentInputMethod || "") === "standard";
   }
 
   // CONDITION === "C"
   return (currentInputMethod || "standard") === "standard";
+}
+
+/***********************
+ * Input method init for each condition
+ ***********************/
+function loadInputMethodForCondition() {
+  if (CONDITION === "A") {
+    currentInputMethod = "standard";
+    return;
+  }
+
+  if (CONDITION === "C") {
+    currentInputMethod = "standard"; // will be overwritten per-step in renderStep()
+    return;
+  }
+
+  // CONDITION === "B"
+  const saved = (localStorage.getItem(IM_KEY) || "").toLowerCase();
+  if (saved === "standard" || saved === "voice" || saved === "chat") {
+    currentInputMethod = saved;
+  } else {
+    currentInputMethod = null; // user must choose on step 1
+  }
+}
+
+function persistInputMethodIfNeeded() {
+  if (CONDITION !== "B") return;
+  if (currentInputMethod === "standard" || currentInputMethod === "voice" || currentInputMethod === "chat") {
+    localStorage.setItem(IM_KEY, currentInputMethod);
+  }
 }
 
 /***********************
@@ -222,8 +258,7 @@ function step({ id, title, required = true, kind = "choice", options = null, ren
 }
 
 /***********************
- * 1-recipient defaults
- * (Important for Continue gating: qty=1, amt=50)
+ * Defaults
  ***********************/
 function ensureRecipient1Defaults() {
   if (!answers.r1_qty) setAnswer("r1_qty", "1");
@@ -273,12 +308,7 @@ const baseSteps = [
     id: "activation",
     title: "Delivery & Activation",
     kind: "choice",
-    options: [
-      "Same activation for all cards",
-      "Unique activation per card",
-      "Bulk activation by sender",
-      "Activation via card number",
-    ],
+    options: ["Same activation for all cards", "Unique activation per card", "Bulk activation by sender", "Activation via card number"],
     render: (s) =>
       stepShell(
         s,
@@ -291,7 +321,7 @@ const baseSteps = [
       ),
   }),
 
-  // Recipient subpages (Recipient 1 only)
+  // Recipient subpages
   step({
     id: "r1_qty",
     title: "Recipient: Quantity",
@@ -344,7 +374,7 @@ function getConditionalSteps() {
     ];
   }
 
-  // Default to Physical branch if not decided yet (so the flow is stable when starting)
+  // Default to Physical branch until selected
   return [
     step({
       id: "packaging",
@@ -413,19 +443,23 @@ function stepShell(stepObj, innerHtml) {
 }
 
 function renderInputMethod(stepObj) {
-  const cur = currentInputMethod || "standard";
+  const cur = currentInputMethod; // may be null (not selected yet)
   const hint = inputHintForStep(stepObj);
+
+  // If not selected yet, show "Pick one to continue" helper
+  const needsPick = !cur;
 
   return `
     <div class="card" style="padding:14px;margin-bottom:14px;">
       <div style="font-weight:1000;margin-bottom:6px;">Input method</div>
       <div class="muted small" style="margin-bottom:10px;">
         Choose how you want to enter information. You can switch at any time.
+        ${needsPick ? `<div style="margin-top:6px;"><strong>Pick an input method to continue.</strong></div>` : ``}
       </div>
 
       <div class="optionGrid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
         <div class="optionCard ${cur === "standard" ? "selected" : ""}" role="button" tabindex="0" data-im="standard">
-          <div style="font-weight:1000;font-size:18px;">Standard</div>
+          <div style="font-weight:1000;font-size:18px;">On-screen</div>
           <div class="muted small">Click / type</div>
         </div>
         <div class="optionCard ${cur === "voice" ? "selected" : ""}" role="button" tabindex="0" data-im="voice">
@@ -446,6 +480,10 @@ function renderInputMethod(stepObj) {
 }
 
 function renderInputPane(stepObj, hint) {
+  if (CONDITION === "B" && !currentInputMethod) {
+    return `<div class="muted small">Select an input method above to begin.</div>`;
+  }
+
   if (currentInputMethod === "voice") {
     return `
       <div class="muted small" style="margin-bottom:10px;">${escapeHtml(hint)}</div>
@@ -472,49 +510,31 @@ function renderInputPane(stepObj, hint) {
     `;
   }
 
+  // On-screen (standard)
   return `<div class="muted small">Use the on-screen controls to make your selections.</div>`;
 }
 
 /***********************
- * Condition-aware hint text (B vs C)
+ * Condition-aware hint text
  ***********************/
 function inputHintForStep(stepObj) {
   const m = currentInputMethod || "standard";
 
-  // Condition B: can be voice or chat, but user can choose; guide with "Say or type"
-  if (CONDITION === "B") {
-    const verb = (m === "voice") ? "Say" : (m === "chat") ? "Type" : "Use";
-    switch (stepObj.kind) {
-      case "choice": return `${verb} one of the visible options.`;
-      case "design": return `${verb} a design name (e.g., "Confetti Pop").`;
-      case "number": return `${verb} a number (e.g., "five", "5").`;
-      case "amount": return `${verb} an amount (e.g., "50", "$75").`;
-      case "text": return `${verb} a short message (avoid personal info).`;
-      default: return `${verb} your answer.`;
-    }
-  }
+  const verb = (m === "voice") ? "Say" : (m === "chat") ? "Type" : "Use";
 
-  // Condition C: system-selected; guide based on locked modality
-  if (CONDITION === "C") {
-    const verb = (m === "voice") ? "Say" : (m === "chat") ? "Type" : "Use";
-    switch (stepObj.kind) {
-      case "choice": return `${verb} one of the visible options.`;
-      case "design": return `${verb} a design name (e.g., "Confetti Pop").`;
-      case "number": return `${verb} a number (e.g., "five", "5").`;
-      case "amount": return `${verb} an amount (e.g., "50", "$75").`;
-      case "text": return `${verb} a short message (avoid personal info).`;
-      default: return `${verb} your answer.`;
-    }
-  }
-
-  // Condition A
   switch (stepObj.kind) {
-    case "choice": return "Select one of the visible options.";
-    case "design": return "Select a design.";
-    case "number": return "Enter a number.";
-    case "amount": return "Enter an amount.";
-    case "text": return "Enter a short message (avoid personal info).";
-    default: return "Continue.";
+    case "choice":
+      return `${verb} one of the visible options.`;
+    case "design":
+      return `${verb} a design name (e.g., "Confetti Pop").`;
+    case "number":
+      return `${verb} a number (e.g., "five", "5").`;
+    case "amount":
+      return `${verb} an amount (e.g., "50", "$75").`;
+    case "text":
+      return `${verb} a short message (avoid personal info).`;
+    default:
+      return `${verb} your answer.`;
   }
 }
 
@@ -535,19 +555,19 @@ function renderStep() {
 
   const stepObj = flow[currentStep];
 
-  // Always ensure defaults exist (prevents Continue from disabling on qty/amount)
+  // defaults (these don't create unfair gating)
   ensureRecipient1Defaults();
   ensureDesignDefaults();
 
-  // Condition C: lock modality per step deterministically
+  // Condition-based modality handling
   if (CONDITION === "C") {
     currentInputMethod = resolveInputMethodForStep(stepObj.id);
     session.input_method_by_step[stepObj.id] = currentInputMethod;
   } else if (CONDITION === "A") {
     currentInputMethod = "standard";
   } else {
-    // Condition B: session records whenever user switches; keep current as-is
-    session.input_method_by_step[stepObj.id] = currentInputMethod || "standard";
+    // B: keep selected method; may be null on first step until user picks
+    session.input_method_by_step[stepObj.id] = currentInputMethod || null;
   }
 
   stepEnteredAt = Date.now();
@@ -565,6 +585,13 @@ function renderStep() {
  * Next button gating
  ***********************/
 function isStepComplete(stepObj) {
+  // Condition B: require an input method pick on step 1 before continuing
+  if (CONDITION === "B" && currentStep === 0) {
+    if (!(currentInputMethod === "standard" || currentInputMethod === "voice" || currentInputMethod === "chat")) {
+      return false;
+    }
+  }
+
   if (!stepObj.required) return true;
 
   if (stepObj.kind === "design") return !!answers.design;
@@ -864,11 +891,12 @@ function displayBlock(helperText, content) {
  * Wiring
  ***********************/
 function wireStepInteractions(stepObj) {
-  // B: modality selection UI
+  // B: modality selection UI (persist selection)
   if (CONDITION === "B") {
     document.querySelectorAll("[data-im]").forEach((el) => {
       el.addEventListener("click", () => {
-        currentInputMethod = el.getAttribute("data-im") || "standard";
+        currentInputMethod = el.getAttribute("data-im") || null;
+        persistInputMethodIfNeeded();
         session.input_method_by_step[stepObj.id] = currentInputMethod;
 
         document.getElementById("stepContainer").innerHTML = stepObj.render(stepObj);
@@ -890,9 +918,9 @@ function wireStepInteractions(stepObj) {
 
   // Disable manual UI when NOT allowed (B voice/chat OR C non-standard)
   const manualAllowed = isManualInputAllowedForCurrentStep(stepObj);
-  if (!manualAllowed) {
-    disableManualControls();
-  }
+
+  // Only disable if an input method has been selected. (If B and not selected yet, keep UI visible but next disabled.)
+  if (!manualAllowed) disableManualControls();
 
   // option cards
   document.querySelectorAll(".optionCard[data-step]").forEach((el) => {
@@ -1022,7 +1050,7 @@ function wireVoice(stepObj) {
   if (!SR) {
     startBtn.disabled = true;
     stopBtn.disabled = true;
-    out.textContent = "Voice not supported. Use Standard or Chat.";
+    out.textContent = "Voice not supported. Use On-screen or Chat.";
     return;
   }
 
@@ -1148,7 +1176,6 @@ function setAnswer(key, value) {
   answers[key] = value;
   session.answers[key] = value;
 
-  // If card_type switches, clear branch-specific answers
   if (key === "card_type") {
     if (value === "Digital") {
       delete answers.packaging; delete session.answers.packaging;
@@ -1159,6 +1186,10 @@ function setAnswer(key, value) {
       delete answers.digital_identifier; delete session.answers.digital_identifier;
     }
   }
+
+  // keep next button state fresh
+  const flow = computeFlow();
+  updateNextButtonState(flow[currentStep]);
 }
 
 function highlightOption(stepId, val) {
@@ -1186,9 +1217,7 @@ function recordTransition(action, fromStep, toStep, flowLength) {
 }
 
 /***********************
- * Preview + price (1 recipient)
- * - Price shows "—" until required pricing inputs are selected
- * - Price never decreases: NO negative adjustments
+ * Preview + price
  ***********************/
 function computeTotals() {
   ensureRecipient1Defaults();
@@ -1198,21 +1227,17 @@ function computeTotals() {
   return { qty, amt, giftTotal };
 }
 
-// Decide when to show computed price (avoid showing $54 before selections)
 function canShowPrice() {
   const type = answers.card_type;
   if (!type) return false;
 
-  // require expiry because it affects price text, and gift amount/qty
   if (!answers.expiry) return false;
   if (!answers.r1_qty || !answers.r1_amt) return false;
 
   if (type === "Physical") {
-    // require packaging + shipping method for physical pricing
     if (!answers.packaging) return false;
     if (!answers.shipping_method) return false;
   } else {
-    // digital: no packaging; require digital delivery selection
     if (!answers.digital_delivery) return false;
   }
 
@@ -1226,11 +1251,9 @@ function computePrice() {
   const expiry = answers.expiry;
   const cardType = answers.card_type;
 
-  // Expiry adjustments (ONLY add; never subtract)
   if (expiry && expiry.startsWith("No expiry")) total += 6.0;
   if (expiry && expiry.startsWith("12-month")) total += 2.0;
 
-  // Physical-only add-ons
   if (cardType === "Physical") {
     const packaging = answers.packaging || "Greeting card";
     const shippingMethod = answers.shipping_method || "Standard shipping";
@@ -1257,10 +1280,8 @@ function refreshPreview() {
   setText("previewDesignName", design.label);
   setText("previewOccasion", (answers.design_category && answers.design_category !== "All") ? answers.design_category : "Any Occasion");
 
-  // Expiry text
   setText("previewExpiry", answers.expiry || "—");
 
-  // Delivery/Shipping line
   if (!answers.card_type) {
     setText("previewDelivery", "Delivery/Shipping: —");
   } else if (answers.card_type === "Digital") {
@@ -1272,13 +1293,10 @@ function refreshPreview() {
   const totals = computeTotals();
   setText("previewAmount", answers.r1_amt ? `$${totals.amt}` : "—");
 
-  // Summary box
   setText("sumCards", answers.r1_qty ? String(totals.qty) : "—");
   setText("sumGiftTotal", answers.r1_amt && answers.r1_qty ? `$${totals.giftTotal.toFixed(0)}` : "—");
 
-  // Price: only show once enough selections exist
-  const show = canShowPrice();
-  setText("buyPrice", show ? `$${computePrice().toFixed(2)}` : "—");
+  setText("buyPrice", canShowPrice() ? `$${computePrice().toFixed(2)}` : "—");
 
   const pill = document.getElementById("conditionPill");
   if (pill) pill.textContent = `Condition ${CONDITION}`;
@@ -1302,6 +1320,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const pill = document.getElementById("conditionPill");
   if (pill) pill.textContent = `Condition ${CONDITION}`;
 
+  loadInputMethodForCondition();
+
   const startBtn = document.getElementById("startBtn");
   const backBtn = document.getElementById("backBtn");
   const nextBtn = document.getElementById("nextBtn");
@@ -1310,15 +1330,15 @@ document.addEventListener("DOMContentLoaded", () => {
     session.startedAt = Date.now();
     showScreen("checkoutScreen");
 
-    // defaults (so qty=1 and amount=50 always exist)
+    // defaults for the simulated flow
     setAnswer("design_category", "All");
     setAnswer("design", "confetti");
     setAnswer("r1_qty", "1");
     setAnswer("r1_amt", "50");
     setAnswer("r1_msg", "");
 
-    // Condition A standard; Condition B starts standard; Condition C set per step in renderStep
-    currentInputMethod = "standard";
+    // load persisted input method for B; A forced; C will override per-step
+    loadInputMethodForCondition();
 
     currentStep = 0;
     renderStep();
@@ -1381,6 +1401,7 @@ function bestOptionMatch(input, options) {
       best = o;
     }
   }
+
   return bestScore >= 1 ? best : null;
 }
 
@@ -1410,6 +1431,7 @@ function parseSpokenNumberClosest(raw, { min = 1, max = 10, fallback = 1 } = {})
     nine: 9,
     ten: 10,
   };
+
   for (const [k, v] of Object.entries(map)) {
     if (s.includes(k)) return clampInt(v, min, max);
   }
