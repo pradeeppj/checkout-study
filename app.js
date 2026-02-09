@@ -41,6 +41,27 @@ const firebaseConfig = {
   appId: "1:665774262534:web:aa71cb270e1f2e6e1e3687",
 };
 
+const PROLIFIC_COMPLETE_URL =
+  "https://app.prolific.com/submissions/complete?cc=C1MIYZ6P";
+
+/***********************
+ * Prolific URL params capture
+ * (PROLIFIC_PID, STUDY_ID, SESSION_ID)
+ ***********************/
+function readProlificParams() {
+  const url = new URL(window.location.href);
+
+  const prolific_pid = (url.searchParams.get("PROLIFIC_PID") || "").trim();
+  const study_id = (url.searchParams.get("STUDY_ID") || "").trim();
+  const session_id = (url.searchParams.get("SESSION_ID") || "").trim();
+
+  return {
+    prolific_pid: prolific_pid || null,
+    study_id: study_id || null,
+    session_id: session_id || null,
+  };
+}
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -740,6 +761,7 @@ async function onSubmitSurvey() {
   session.surveySubmittedAt = Date.now();
 
   await writeFinal({
+    prolific: session.prolific, 
     condition: session.condition,
     startedAt: session.startedAt,
     checkoutCompletedAt: session.checkoutCompletedAt,
@@ -752,9 +774,12 @@ async function onSubmitSurvey() {
     survey: session.survey,
   });
 
-  setText("surveyStatus", "Submitted. Thank you!");
-  const btn = document.getElementById("surveySubmitBtn");
-  if (btn) btn.disabled = true;
+  setText("surveyStatus", "Submitted. Redirecting back to Prolific…");
+
+  // Small delay so users see confirmation + Firestore finishes cleanly
+  setTimeout(() => {
+    window.location.href = PROLIFIC_COMPLETE_URL;
+  }, 1200);
 }
 
 /***********************
@@ -1317,8 +1342,13 @@ function showScreen(id) {
  * Init + navigation
  ***********************/
 document.addEventListener("DOMContentLoaded", () => {
+
+  session.prolific = readProlificParams();
+
   const pill = document.getElementById("conditionPill");
   if (pill) pill.textContent = `Condition ${CONDITION}`;
+
+
 
   loadInputMethodForCondition();
 
