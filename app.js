@@ -53,71 +53,51 @@ async function writeFinal(payload) {
  * - Accepts URL ?cond=A|B|C (also condition=, c=)
  * - If missing, assigns once, stores in localStorage, AND writes to URL
  ***********************/
-const CONDITION_KEY = "study_condition_abc";
-let CONDITION = null;
-
-/**
- * Returns cached condition if already assigned on this device.
- * Otherwise reads Firestore completion counts and assigns the least-filled condition.
- * NO URL params used.
- */
 /***********************
  * Condition selection (A/B/C)
- * Accepts:
- *   - Query param: ?cond=A|B|C   (also ?condition=, ?c=)
- *   - Hash:        #A | #B | #C
- *
- * Behavior:
- *   - If URL provides a condition, it overrides localStorage
- *   - After reading it, we REMOVE it from the URL (no visible params)
- *   - Otherwise we reuse localStorage
- *   - Otherwise default to A
+ * - Accepts URL ?cond=A|B|C (also ?condition=, ?c=) and hash #A/#B/#C
+ * - If URL provides a condition, it overrides localStorage
+ * - Immediately removes cond/hash from the URL (keeps links clean)
  ***********************/
 function getCondition() {
   const key = "study_condition_abc";
   const url = new URL(window.location.href);
 
-  // 1) Query param (supports ?cond=, ?condition=, ?c=)
-  const qp =
-    (url.searchParams.get("cond") ||
-      url.searchParams.get("condition") ||
-      url.searchParams.get("c") ||
-      "")
-      .toUpperCase()
-      .trim();
+  const qp = (url.searchParams.get("cond") ||
+              url.searchParams.get("condition") ||
+              url.searchParams.get("c") ||
+              "").toUpperCase().trim();
 
-  // 2) Hash (#A/#B/#C)
   const h = (url.hash || "").replace("#", "").toUpperCase().trim();
 
-  const fromUrl = (qp === "A" || qp === "B" || qp === "C") ? qp
-                : (h === "A" || h === "B" || h === "C") ? h
-                : "";
+  const fromUrl =
+    (qp === "A" || qp === "B" || qp === "C") ? qp :
+    (h === "A" || h === "B" || h === "C") ? h :
+    "";
 
   if (fromUrl) {
-    // Persist assignment
     localStorage.setItem(key, fromUrl);
 
-    // Remove URL condition traces (query + hash)
+    // remove params + hash so URL is clean
     url.searchParams.delete("cond");
     url.searchParams.delete("condition");
     url.searchParams.delete("c");
     url.hash = "";
-    history.replaceState({}, "", url.toString());
 
+    history.replaceState({}, "", url.toString());
     return fromUrl;
   }
 
-  // Reuse prior assignment
   const existing = (localStorage.getItem(key) || "").toUpperCase();
   if (existing === "A" || existing === "B" || existing === "C") return existing;
 
-  // Default
-  const fallback = "A";
-  localStorage.setItem(key, fallback);
-  return fallback;
+  // If neither exists, default to A
+  localStorage.setItem(key, "A");
+  return "A";
 }
 
 const CONDITION = getCondition();
+
 
 /***********************
  * Local session state
