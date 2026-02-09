@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gift Card Checkout Study</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brandMark">G</div>
+      <div class="brandText">
+        <div class="brandName">Giftit</div>
+        <div class="brandSub">Checkout Study</div>
+      </div>
+    </div>
+
+    <div class="topbarRight">
+      <span class="pill">Simulated</span>
+      <span class="pill">No PII</span>
+      <span class="pill pillAccent" id="conditionPill">Condition ?</span>
+    </div>
+  </header>
+
+  <!-- INTRO -->
+  <section id="introScreen" class="screen active">
+    <div class="card introCard">
+      <h1>Checkout Experience Study</h1>
+      <p class="muted">
+        You will complete a simulated checkout flow for a gift card platform. No real purchases will occur.
+      </p>
+
+      <ul class="introList">
+        <li>Do not enter real personal information</li>
+        <li>All data is simulated</li>
+        <li>Complete the task as naturally as possible</li>
+      </ul>
+
+      <p class="muted small">
+        Your interactions will be recorded for research purposes only.
+      </p>
+
+      <button id="startBtn" class="btn btnPrimary" type="button">Start Checkout</button>
+
+      <p class="muted tiny" style="margin-top:12px;">
+        Testing tip: add <code>?cond=A</code>, <code>?cond=B</code>, or <code>?cond=C</code> to the URL.
+      </p>
+    </div>
+  </section>
+
+  <!-- CHECKOUT -->
+  <section id="checkoutScreen" class="screen">
+    <main class="layout">
+      <!-- LEFT -->
+      <aside class="leftCol">
+        <div class="card productCard">
+          <div class="productHeader">
+            <div>
+              <div class="productTitle">Giftit Gift Card</div>
+              <div class="ratingRow">
+                <span class="stars">★★★★★</span>
+                <span class="muted small">(12,481)</span>
+                <span class="badge">Best Seller</span>
+              </div>
+            </div>
+            <button class="iconBtn" type="button" aria-label="Share">↗</button>
+          </div>
+
+          <div id="previewCard" class="giftCard bg-confetti">
+            <div class="gcTop">
+              <div class="gcBrand">Giftit</div>
+              <div class="gcPill" id="previewType">Digital</div>
+            </div>
+
+            <div class="gcMid">
+              <div class="gcName" id="previewDesignName">Confetti Pop</div>
+              <div class="gcOccasion" id="previewOccasion">Any Occasion</div>
+            </div>
+
+            <div class="gcBottom">
+              <div>
+                <div class="gcLabel">Gift Amount</div>
+                <div class="gcAmount" id="previewAmount">$50</div>
+              </div>
+              <div class="gcMeta">
+                <div id="previewExpiry">12-month expiry</div>
+                <div id="previewDelivery">Delivery: Email (synthetic)</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="muted small" style="margin-top:12px;">
+            Preview updates as you select options.
+          </div>
+        </div>
+
+        <div class="card buyCard">
+          <div class="buyTop">
+            <div>
+              <div class="muted">Price</div>
+              <div class="stockRow"><span class="dotGreen"></span><span class="stock">In Stock</span></div>
+            </div>
+            <div class="buyPrice" id="buyPrice">$50.00</div>
+          </div>
+
+          <div class="summaryBox">
+            <div class="sumRow"><span class="muted">Quantity:</span> <strong id="sumCards">1</strong></div>
+            <div class="sumRow"><span class="muted">Gift total:</span> <strong id="sumGiftTotal">$50</strong></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- RIGHT -->
+      <section class="rightCol">
+        <div class="card stepCard">
+          <div class="stepHeader">
+            <div class="stepTitle" id="progress">Step</div>
+            <div class="pill"><span class="lock">🔒</span> No personal info collected</div>
+          </div>
+
+          <div id="stepContainer"></div>
+
+          <div class="stepFooter">
+            <button id="backBtn" class="btn btnGhost" type="button" disabled>Back</button>
+            <button id="nextBtn" class="btn btnPrimary" type="button">Continue</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </section>
+
+  <!-- SURVEY -->
+  <section id="surveyScreen" class="screen">
+    <div class="card surveyCard">
+      <h2 style="margin:0 0 8px 0;">Post-Task Survey</h2>
+      <p class="muted small" style="margin:0 0 16px 0;">
+        Please answer based on your experience in the checkout task you just completed.
+      </p>
+
+      <div id="surveyContainer"></div>
+
+      <div class="stepFooter" style="margin-top:16px;">
+        <span class="muted small" id="surveyStatus"></span>
+        <button id="surveySubmitBtn" class="btn btnPrimary" type="button">Submit Survey</button>
+      </div>
+    </div>
+  </section>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
